@@ -57,29 +57,31 @@ type AuthorizationResponse struct {
 func GetHTTPClient(ctx context.Context, settings *Settings) *http.Client {
 	tflog.Info(ctx, "GetHTTPClient called...")
 
-	// load trusted certificate authorities in a certpool
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM([]byte(settings.CAChain))
+	// configure the client
+	client := retryablehttp.NewClient()
 
-	// configure the transport with trusted certificate authorities
-	tlsConfig := &tls.Config{
-		RootCAs: caCertPool,
-	}
-	transport := &http.Transport{
-		TLSClientConfig:   tlsConfig,
-		MaxConnsPerHost:   10,
-		DisableKeepAlives: false,
+	if len(settings.CAChain) != 0 {
+		// load trusted certificate authorities in a certpool
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM([]byte(settings.CAChain))
+
+		// configure the transport with trusted certificate authorities
+		tlsConfig := &tls.Config{
+			RootCAs: caCertPool,
+		}
+		transport := &http.Transport{
+			TLSClientConfig:   tlsConfig,
+			MaxConnsPerHost:   10,
+			DisableKeepAlives: false,
+		}
+		// override with the trusted certificate authorities
+		client.HTTPClient.Transport = transport
 	}
 	if settings.Proxy {
 		proxyURL, _ := url.Parse(settings.ProxyServer)
 		transport.Proxy = http.ProxyURL(proxyURL)
 	}
 
-	// configure the client
-	client := retryablehttp.NewClient()
-
-	// override with the trusted certificate authorities
-	client.HTTPClient.Transport = transport
 	client.RetryWaitMin = time.Duration(settings.HTTPClientRetryWaitMin) * 1000000000
 	client.RetryWaitMax = time.Duration(settings.HTTPClientRetryWaitMax) * 1000000000
 	client.RetryMax = settings.HTTPClientRetryMax
